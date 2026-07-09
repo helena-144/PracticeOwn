@@ -29,11 +29,28 @@ const loginSchema = z.object({
 
 type LoginValues = z.infer<typeof loginSchema>;
 
+const REDIRECT_REASON_MESSAGES: Record<string, string> = {
+  idle_timeout: "You were signed out after 15 minutes of inactivity. Please sign in again.",
+};
+
+function friendlyAuthError(message: string): string {
+  if (message.toLowerCase().includes("invalid login credentials")) {
+    return "Incorrect email or password.";
+  }
+  if (message.toLowerCase().includes("email not confirmed")) {
+    return "Please confirm your email address before signing in. Check your inbox for the confirmation link.";
+  }
+  return message;
+}
+
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const reason = searchParams.get("reason");
+  const noticeMessage = reason ? REDIRECT_REASON_MESSAGES[reason] : null;
 
   const form = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
@@ -45,20 +62,35 @@ export function LoginForm() {
     setIsSubmitting(true);
 
     const supabase = createClient();
-    const { error: signInError } = await supabase.auth.signInWithPassword({
+    const { data, error: signInError } = await supabase.auth.signInWithPassword({
       email: values.email,
       password: values.password,
     });
 
-    setIsSubmitting(false);
-
     if (signInError) {
-      setError(signInError.message);
+      setIsSubmitting(false);
+      setError(friendlyAuthError(signInError.message));
       return;
     }
 
-    const redirectTo = searchParams.get("redirectedFrom") ?? "/dashboard";
-    router.push(redirectTo);
+    const redirectedFrom = searchParams.get("redirectedFrom");
+    if (redirectedFrom && redirectedFrom !== "/login") {
+      router.push(redirectedFrom);
+      router.refresh();
+      return;
+    }
+
+    // No practice yet (e.g. account created outside the normal signup flow,
+    // or provisioning didn't complete) — send them to onboarding instead of
+    // a dashboard with nothing in it.
+    const { data: clinician } = await supabase
+      .from("clinicians")
+      .select("id")
+      .eq("user_id", data.user.id)
+      .maybeSingle();
+
+    setIsSubmitting(false);
+    router.push(clinician ? "/dashboard" : "/dashboard/onboarding");
     router.refresh();
   }
 
@@ -71,6 +103,11 @@ export function LoginForm() {
       <CardContent>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            {noticeMessage && (
+              <Alert>
+                <AlertDescription>{noticeMessage}</AlertDescription>
+              </Alert>
+            )}
             {error && (
               <Alert variant="destructive">
                 <AlertDescription>{error}</AlertDescription>

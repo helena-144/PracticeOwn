@@ -1,4 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 
 import type { Database } from "@/types/database";
@@ -36,21 +37,17 @@ export function createClient() {
 /**
  * Service-role Supabase client that bypasses RLS. Server-only — never import
  * this from a Client Component or expose the key to the browser. Restricted
- * to trusted server contexts such as Stripe webhooks and scheduled jobs.
+ * to trusted server contexts such as Stripe webhooks, scheduled jobs, and
+ * audit logging (see src/lib/audit.ts).
+ *
+ * Built on the plain @supabase/supabase-js client rather than @supabase/ssr:
+ * service-role access carries no user session, so there's no cookie jar to
+ * wire up in the first place.
  */
 export function createServiceRoleClient() {
-  return createServerClient<Database>(
+  return createSupabaseClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return [];
-        },
-        setAll() {
-          // Service-role client is not session-bound; no cookies to persist.
-        },
-      },
-    }
+    { auth: { persistSession: false, autoRefreshToken: false } }
   );
 }

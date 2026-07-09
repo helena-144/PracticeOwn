@@ -3,22 +3,22 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { createClient } from "@/lib/supabase/client";
-import type { Organization, Profile } from "@/types/practice";
+import type { Clinician, Practice } from "@/types/practice";
 
 interface UsePracticeResult {
-  organization: Organization | null;
-  profile: Profile | null;
+  practice: Practice | null;
+  clinician: Clinician | null;
   isLoading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
-  updateOrganization: (
-    updates: Partial<Pick<Organization, "name" | "npi" | "tax_id" | "specialty" | "state">>
+  updatePractice: (
+    updates: Partial<Pick<Practice, "name" | "state">>
   ) => Promise<{ error: string | null }>;
 }
 
 export function usePractice(): UsePracticeResult {
-  const [organization, setOrganization] = useState<Organization | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const [practice, setPractice] = useState<Practice | null>(null);
+  const [clinician, setClinician] = useState<Clinician | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,31 +36,31 @@ export function usePractice(): UsePracticeResult {
       return;
     }
 
-    const { data: profileData, error: profileError } = await supabase
-      .from("profiles")
+    const { data: clinicianData, error: clinicianError } = await supabase
+      .from("clinicians")
       .select("*")
-      .eq("id", user.id)
-      .single();
+      .eq("user_id", user.id)
+      .maybeSingle();
 
-    if (profileError) {
-      setError(profileError.message);
+    if (clinicianError) {
+      setError(clinicianError.message);
       setIsLoading(false);
       return;
     }
 
-    setProfile(profileData);
+    setClinician(clinicianData);
 
-    if (profileData.organization_id) {
-      const { data: orgData, error: orgError } = await supabase
-        .from("organizations")
+    if (clinicianData) {
+      const { data: practiceData, error: practiceError } = await supabase
+        .from("practices")
         .select("*")
-        .eq("id", profileData.organization_id)
+        .eq("id", clinicianData.practice_id)
         .single();
 
-      if (orgError) {
-        setError(orgError.message);
+      if (practiceError) {
+        setError(practiceError.message);
       } else {
-        setOrganization(orgData);
+        setPractice(practiceData);
       }
     }
 
@@ -71,17 +71,17 @@ export function usePractice(): UsePracticeResult {
     fetchPractice();
   }, [fetchPractice]);
 
-  const updateOrganization = useCallback(
-    async (updates: Partial<Pick<Organization, "name" | "npi" | "tax_id" | "specialty" | "state">>) => {
-      if (!organization) {
-        return { error: "No organization loaded" };
+  const updatePractice = useCallback(
+    async (updates: Partial<Pick<Practice, "name" | "state">>) => {
+      if (!practice) {
+        return { error: "No practice loaded" };
       }
 
       const supabase = createClient();
       const { data, error: updateError } = await supabase
-        .from("organizations")
+        .from("practices")
         .update(updates)
-        .eq("id", organization.id)
+        .eq("id", practice.id)
         .select("*")
         .single();
 
@@ -89,11 +89,11 @@ export function usePractice(): UsePracticeResult {
         return { error: updateError.message };
       }
 
-      setOrganization(data);
+      setPractice(data);
       return { error: null };
     },
-    [organization]
+    [practice]
   );
 
-  return { organization, profile, isLoading, error, refresh: fetchPractice, updateOrganization };
+  return { practice, clinician, isLoading, error, refresh: fetchPractice, updatePractice };
 }

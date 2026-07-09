@@ -14,23 +14,23 @@ export async function POST() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single();
+  const { data: clinician } = await supabase
+    .from("clinicians")
+    .select("practice_id")
+    .eq("user_id", user.id)
+    .maybeSingle();
 
-  if (!profile?.organization_id) {
-    return NextResponse.json({ error: "No organization found for user" }, { status: 404 });
+  if (!clinician) {
+    return NextResponse.json({ error: "No practice found for user" }, { status: 404 });
   }
 
-  const { data: organization } = await supabase
-    .from("organizations")
+  const { data: practice } = await supabase
+    .from("practices")
     .select("stripe_customer_id")
-    .eq("id", profile.organization_id)
+    .eq("id", clinician.practice_id)
     .single();
 
-  if (!organization?.stripe_customer_id) {
+  if (!practice?.stripe_customer_id) {
     return NextResponse.json(
       { error: "No billing account found. Subscribe to a plan first." },
       { status: 404 }
@@ -40,7 +40,7 @@ export async function POST() {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
   const session = await createBillingPortalSession({
-    customerId: organization.stripe_customer_id,
+    customerId: practice.stripe_customer_id,
     returnUrl: `${appUrl}/billing`,
   });
 

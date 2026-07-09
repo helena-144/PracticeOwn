@@ -11,65 +11,64 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePractice } from "@/hooks/usePractice";
 import { createClient } from "@/lib/supabase/client";
+import { US_STATES } from "@/lib/us-states";
 
-const profileSchema = z.object({
-  full_name: z.string().min(1, "Name is required"),
+const clinicianSchema = z.object({
+  first_name: z.string().min(1, "First name is required"),
+  last_name: z.string().min(1, "Last name is required"),
 });
 
-const organizationSchema = z.object({
+const practiceSchema = z.object({
   name: z.string().min(1, "Practice name is required"),
-  npi: z.string(),
-  tax_id: z.string(),
-  specialty: z.string(),
-  state: z.string(),
+  state: z.string().min(1, "Select a state"),
 });
 
-type ProfileValues = z.infer<typeof profileSchema>;
-type OrganizationValues = z.infer<typeof organizationSchema>;
+type ClinicianValues = z.infer<typeof clinicianSchema>;
+type PracticeValues = z.infer<typeof practiceSchema>;
 
 export default function SettingsPage() {
-  const { organization, profile, isLoading, updateOrganization, refresh } = usePractice();
+  const { practice, clinician, isLoading, updatePractice, refresh } = usePractice();
 
-  const profileForm = useForm<ProfileValues>({
-    resolver: zodResolver(profileSchema),
-    defaultValues: { full_name: "" },
+  const clinicianForm = useForm<ClinicianValues>({
+    resolver: zodResolver(clinicianSchema),
+    defaultValues: { first_name: "", last_name: "" },
   });
 
-  const organizationForm = useForm<OrganizationValues>({
-    resolver: zodResolver(organizationSchema),
-    defaultValues: { name: "", npi: "", tax_id: "", specialty: "", state: "" },
+  const practiceForm = useForm<PracticeValues>({
+    resolver: zodResolver(practiceSchema),
+    defaultValues: { name: "", state: "" },
   });
 
   useEffect(() => {
-    if (profile) {
-      profileForm.reset({ full_name: profile.full_name ?? "" });
+    if (clinician) {
+      clinicianForm.reset({ first_name: clinician.first_name, last_name: clinician.last_name });
     }
-  }, [profile, profileForm]);
+  }, [clinician, clinicianForm]);
 
   useEffect(() => {
-    if (organization) {
-      organizationForm.reset({
-        name: organization.name ?? "",
-        npi: organization.npi ?? "",
-        tax_id: organization.tax_id ?? "",
-        specialty: organization.specialty ?? "",
-        state: organization.state ?? "",
-      });
+    if (practice) {
+      practiceForm.reset({ name: practice.name, state: practice.state });
     }
-  }, [organization, organizationForm]);
+  }, [practice, practiceForm]);
 
-  async function handleProfileSubmit(values: ProfileValues) {
-    if (!profile) return;
+  async function handleClinicianSubmit(values: ClinicianValues) {
+    if (!clinician) return;
 
     const supabase = createClient();
     const { error } = await supabase
-      .from("profiles")
-      .update({ full_name: values.full_name })
-      .eq("id", profile.id);
+      .from("clinicians")
+      .update({ first_name: values.first_name, last_name: values.last_name })
+      .eq("id", clinician.id);
 
     if (error) {
       toast.error(error.message);
@@ -80,14 +79,8 @@ export default function SettingsPage() {
     refresh();
   }
 
-  async function handleOrganizationSubmit(values: OrganizationValues) {
-    const result = await updateOrganization({
-      name: values.name,
-      npi: values.npi || null,
-      tax_id: values.tax_id || null,
-      specialty: values.specialty || null,
-      state: values.state || null,
-    });
+  async function handlePracticeSubmit(values: PracticeValues) {
+    const result = await updatePractice(values);
 
     if (result.error) {
       toast.error(result.error);
@@ -116,17 +109,30 @@ export default function SettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Profile</CardTitle>
-          <CardDescription>{profile?.email}</CardDescription>
+          <CardDescription>{clinician?.email}</CardDescription>
         </CardHeader>
-        <Form {...profileForm}>
-          <form onSubmit={profileForm.handleSubmit(handleProfileSubmit)}>
-            <CardContent>
+        <Form {...clinicianForm}>
+          <form onSubmit={clinicianForm.handleSubmit(handleClinicianSubmit)}>
+            <CardContent className="grid grid-cols-2 gap-4">
               <FormField
-                control={profileForm.control}
-                name="full_name"
+                control={clinicianForm.control}
+                name="first_name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Full name</FormLabel>
+                    <FormLabel>First name</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={clinicianForm.control}
+                name="last_name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Last name</FormLabel>
                     <FormControl>
                       <Input {...field} />
                     </FormControl>
@@ -136,8 +142,8 @@ export default function SettingsPage() {
               />
             </CardContent>
             <CardFooter>
-              <Button type="submit" disabled={profileForm.formState.isSubmitting}>
-                {profileForm.formState.isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+              <Button type="submit" disabled={clinicianForm.formState.isSubmitting}>
+                {clinicianForm.formState.isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
                 Save profile
               </Button>
             </CardFooter>
@@ -150,11 +156,11 @@ export default function SettingsPage() {
           <CardTitle>Practice details</CardTitle>
           <CardDescription>Used across compliance and audit records.</CardDescription>
         </CardHeader>
-        <Form {...organizationForm}>
-          <form onSubmit={organizationForm.handleSubmit(handleOrganizationSubmit)}>
+        <Form {...practiceForm}>
+          <form onSubmit={practiceForm.handleSubmit(handlePracticeSubmit)}>
             <CardContent className="space-y-4">
               <FormField
-                control={organizationForm.control}
+                control={practiceForm.control}
                 name="name"
                 render={({ field }) => (
                   <FormItem>
@@ -166,67 +172,34 @@ export default function SettingsPage() {
                   </FormItem>
                 )}
               />
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={organizationForm.control}
-                  name="npi"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>NPI</FormLabel>
+              <FormField
+                control={practiceForm.control}
+                name="state"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>State</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
-                        <Input {...field} />
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select" />
+                        </SelectTrigger>
                       </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={organizationForm.control}
-                  name="tax_id"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Tax ID</FormLabel>
-                      <FormControl>
-                        <Input {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              <Separator />
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={organizationForm.control}
-                  name="specialty"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Specialty</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Family Medicine" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={organizationForm.control}
-                  name="state"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>State</FormLabel>
-                      <FormControl>
-                        <Input placeholder="CA" maxLength={2} {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+                      <SelectContent className="max-h-64">
+                        {US_STATES.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             </CardContent>
             <CardFooter>
-              <Button type="submit" disabled={organizationForm.formState.isSubmitting}>
-                {organizationForm.formState.isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+              <Button type="submit" disabled={practiceForm.formState.isSubmitting}>
+                {practiceForm.formState.isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
                 Save practice details
               </Button>
             </CardFooter>

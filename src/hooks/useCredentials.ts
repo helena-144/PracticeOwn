@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { createClient } from "@/lib/supabase/client";
-import { computeCredentialStatus, type Credential, type CredentialFormValues } from "@/types/credentials";
+import type { Credential, CredentialFormValues } from "@/types/credentials";
 
 interface UseCredentialsResult {
   credentials: Credential[];
@@ -11,7 +11,7 @@ interface UseCredentialsResult {
   error: string | null;
   refresh: () => Promise<void>;
   createCredential: (
-    organizationId: string,
+    practiceId: string,
     values: CredentialFormValues
   ) => Promise<{ error: string | null }>;
   updateCredential: (
@@ -21,13 +21,13 @@ interface UseCredentialsResult {
   deleteCredential: (id: string) => Promise<{ error: string | null }>;
 }
 
-export function useCredentials(organizationId: string | null | undefined): UseCredentialsResult {
+export function useCredentials(practiceId: string | null | undefined): UseCredentialsResult {
   const [credentials, setCredentials] = useState<Credential[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchCredentials = useCallback(async () => {
-    if (!organizationId) {
+    if (!practiceId) {
       setCredentials([]);
       setIsLoading(false);
       return;
@@ -40,8 +40,8 @@ export function useCredentials(organizationId: string | null | undefined): UseCr
     const { data, error: fetchError } = await supabase
       .from("credentials")
       .select("*")
-      .eq("organization_id", organizationId)
-      .order("expiration_date", { ascending: true, nullsFirst: false });
+      .eq("practice_id", practiceId)
+      .order("expiry_date", { ascending: true, nullsFirst: false });
 
     if (fetchError) {
       setError(fetchError.message);
@@ -50,32 +50,27 @@ export function useCredentials(organizationId: string | null | undefined): UseCr
     }
 
     setIsLoading(false);
-  }, [organizationId]);
+  }, [practiceId]);
 
   useEffect(() => {
     fetchCredentials();
   }, [fetchCredentials]);
 
   const createCredential = useCallback(
-    async (orgId: string, values: CredentialFormValues) => {
+    async (practiceIdForInsert: string, values: CredentialFormValues) => {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
 
-      if (!user) return { error: "Not authenticated" };
-
+      // status is computed server-side by the set_credential_status trigger
+      // based on expiry_date — no client-side status logic needed.
       const { error: insertError } = await supabase.from("credentials").insert({
-        organization_id: orgId,
-        provider_name: values.provider_name,
-        credential_type: values.credential_type,
+        practice_id: practiceIdForInsert,
+        clinician_id: values.clinician_id,
+        type: values.type,
+        name: values.name,
         issuing_body: values.issuing_body || null,
         credential_number: values.credential_number || null,
         issue_date: values.issue_date || null,
-        expiration_date: values.expiration_date || null,
-        status: computeCredentialStatus(values.expiration_date || null),
-        reminder_days_before: values.reminder_days_before,
-        created_by: user.id,
+        expiry_date: values.expiry_date || null,
       });
 
       if (insertError) {
@@ -92,17 +87,7 @@ export function useCredentials(organizationId: string | null | undefined): UseCr
     async (id: string, values: Partial<CredentialFormValues>) => {
       const supabase = createClient();
 
-      const updates: Partial<CredentialFormValues> & { status?: ReturnType<typeof computeCredentialStatus> } = {
-        ...values,
-      };
-      if (values.expiration_date !== undefined) {
-        updates.status = computeCredentialStatus(values.expiration_date || null);
-      }
-
-      const { error: updateError } = await supabase
-        .from("credentials")
-        .update(updates)
-        .eq("id", id);
+      const { error: updateError } = await supabase.from("credentials").update(values).eq("id", id);
 
       if (updateError) {
         return { error: updateError.message };
@@ -114,20 +99,17 @@ export function useCredentials(organizationId: string | null | undefined): UseCr
     [fetchCredentials]
   );
 
-  const deleteCredential = useCallback(
-    async (id: string) => {
-      const supabase = createClient();
-      const { error: deleteError } = await supabase.from("credentials").delete().eq("id", id);
+  const deleteCredential = useCallback(async (id: string) => {
+    const supabase = createClient();
+    const { error: deleteError } = await supabase.from("credentials").delete().eq("id", id);
 
-      if (deleteError) {
-        return { error: deleteError.message };
-      }
+    if (deleteError) {
+      return { error: deleteError.message };
+    }
 
-      setCredentials((prev) => prev.filter((c) => c.id !== id));
-      return { error: null };
-    },
-    []
-  );
+    setCredentials((prev) => prev.filter((c) => c.id !== id));
+    return { error: null };
+  }, []);
 
   return {
     credentials,

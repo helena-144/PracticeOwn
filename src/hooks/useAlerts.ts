@@ -15,13 +15,13 @@ interface UseAlertsResult {
   markAllAsRead: () => Promise<{ error: string | null }>;
 }
 
-export function useAlerts(organizationId: string | null | undefined): UseAlertsResult {
+export function useAlerts(practiceId: string | null | undefined): UseAlertsResult {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchAlerts = useCallback(async () => {
-    if (!organizationId) {
+    if (!practiceId) {
       setAlerts([]);
       setIsLoading(false);
       return;
@@ -34,7 +34,7 @@ export function useAlerts(organizationId: string | null | undefined): UseAlertsR
     const { data, error: fetchError } = await supabase
       .from("alerts")
       .select("*")
-      .eq("organization_id", organizationId)
+      .eq("practice_id", practiceId)
       .order("created_at", { ascending: false })
       .limit(50);
 
@@ -45,25 +45,25 @@ export function useAlerts(organizationId: string | null | undefined): UseAlertsR
     }
 
     setIsLoading(false);
-  }, [organizationId]);
+  }, [practiceId]);
 
   useEffect(() => {
     fetchAlerts();
   }, [fetchAlerts]);
 
   useEffect(() => {
-    if (!organizationId) return;
+    if (!practiceId) return;
 
     const supabase = createClient();
     const channel = supabase
-      .channel(`alerts:${organizationId}`)
+      .channel(`alerts:${practiceId}`)
       .on(
         "postgres_changes",
         {
           event: "INSERT",
           schema: "public",
           table: "alerts",
-          filter: `organization_id=eq.${organizationId}`,
+          filter: `practice_id=eq.${practiceId}`,
         },
         (payload) => {
           setAlerts((prev) => [payload.new as Alert, ...prev]);
@@ -74,7 +74,7 @@ export function useAlerts(organizationId: string | null | undefined): UseAlertsR
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [organizationId]);
+  }, [practiceId]);
 
   const markAsRead = useCallback(async (id: string) => {
     const supabase = createClient();
@@ -92,13 +92,13 @@ export function useAlerts(organizationId: string | null | undefined): UseAlertsR
   }, []);
 
   const markAllAsRead = useCallback(async () => {
-    if (!organizationId) return { error: "No organization loaded" };
+    if (!practiceId) return { error: "No practice loaded" };
 
     const supabase = createClient();
     const { error: updateError } = await supabase
       .from("alerts")
       .update({ is_read: true })
-      .eq("organization_id", organizationId)
+      .eq("practice_id", practiceId)
       .eq("is_read", false);
 
     if (updateError) {
@@ -107,7 +107,7 @@ export function useAlerts(organizationId: string | null | undefined): UseAlertsR
 
     setAlerts((prev) => prev.map((a) => ({ ...a, is_read: true })));
     return { error: null };
-  }, [organizationId]);
+  }, [practiceId]);
 
   const unreadCount = alerts.filter((a) => !a.is_read).length;
 

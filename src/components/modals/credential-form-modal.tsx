@@ -34,23 +34,25 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CREDENTIAL_TYPE_LABELS, type Credential, type CredentialFormValues } from "@/types/credentials";
 import type { CredentialType } from "@/types/database";
+import type { Clinician } from "@/types/practice";
 
 const credentialSchema = z.object({
-  provider_name: z.string().min(1, "Provider name is required"),
-  credential_type: z.custom<CredentialType>((val) => typeof val === "string" && val.length > 0, {
+  clinician_id: z.string().min(1, "Select a clinician"),
+  type: z.custom<CredentialType>((val) => typeof val === "string" && val.length > 0, {
     message: "Select a credential type",
   }),
+  name: z.string().min(1, "Credential name is required"),
   issuing_body: z.string(),
   credential_number: z.string(),
   issue_date: z.string(),
-  expiration_date: z.string(),
-  reminder_days_before: z.coerce.number().int().min(0).max(365),
+  expiry_date: z.string(),
 });
 
 interface CredentialFormModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   credential?: Credential | null;
+  clinicians: Clinician[];
   onSubmit: (values: CredentialFormValues) => Promise<{ error: string | null }>;
 }
 
@@ -58,6 +60,7 @@ export function CredentialFormModal({
   open,
   onOpenChange,
   credential,
+  clinicians,
   onSubmit,
 }: CredentialFormModalProps) {
   const [error, setError] = useState<string | null>(null);
@@ -66,30 +69,30 @@ export function CredentialFormModal({
   const form = useForm<CredentialFormValues>({
     resolver: zodResolver(credentialSchema) as Resolver<CredentialFormValues>,
     defaultValues: {
-      provider_name: "",
-      credential_type: "medical_license",
+      clinician_id: "",
+      type: "license",
+      name: "",
       issuing_body: "",
       credential_number: "",
       issue_date: "",
-      expiration_date: "",
-      reminder_days_before: 60,
+      expiry_date: "",
     },
   });
 
   useEffect(() => {
     if (open) {
       form.reset({
-        provider_name: credential?.provider_name ?? "",
-        credential_type: credential?.credential_type ?? "medical_license",
+        clinician_id: credential?.clinician_id ?? clinicians[0]?.id ?? "",
+        type: credential?.type ?? "license",
+        name: credential?.name ?? "",
         issuing_body: credential?.issuing_body ?? "",
         credential_number: credential?.credential_number ?? "",
         issue_date: credential?.issue_date ?? "",
-        expiration_date: credential?.expiration_date ?? "",
-        reminder_days_before: credential?.reminder_days_before ?? 60,
+        expiry_date: credential?.expiry_date ?? "",
       });
       setError(null);
     }
-  }, [open, credential, form]);
+  }, [open, credential, clinicians, form]);
 
   async function handleSubmit(values: CredentialFormValues) {
     setError(null);
@@ -121,12 +124,36 @@ export function CredentialFormModal({
             )}
             <FormField
               control={form.control}
-              name="provider_name"
+              name="clinician_id"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Provider name</FormLabel>
+                  <FormLabel>Clinician</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a clinician" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {clinicians.map((clinician) => (
+                        <SelectItem key={clinician.id} value={clinician.id}>
+                          {clinician.first_name} {clinician.last_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Credential name</FormLabel>
                   <FormControl>
-                    <Input placeholder="Dr. Jane Smith" {...field} />
+                    <Input placeholder="California LCSW License" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -134,7 +161,7 @@ export function CredentialFormModal({
             />
             <FormField
               control={form.control}
-              name="credential_type"
+              name="type"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Credential type</FormLabel>
@@ -164,7 +191,7 @@ export function CredentialFormModal({
                   <FormItem>
                     <FormLabel>Issuing body</FormLabel>
                     <FormControl>
-                      <Input placeholder="State Medical Board" {...field} />
+                      <Input placeholder="State licensing board" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -200,7 +227,7 @@ export function CredentialFormModal({
               />
               <FormField
                 control={form.control}
-                name="expiration_date"
+                name="expiry_date"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Expiration date</FormLabel>
@@ -212,19 +239,6 @@ export function CredentialFormModal({
                 )}
               />
             </div>
-            <FormField
-              control={form.control}
-              name="reminder_days_before"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Remind me before expiration (days)</FormLabel>
-                  <FormControl>
-                    <Input type="number" min={0} max={365} {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
             <DialogFooter>
               <Button
                 type="button"

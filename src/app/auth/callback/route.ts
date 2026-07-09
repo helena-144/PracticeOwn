@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 
+import { logAuditEvent, getClientIp } from "@/lib/audit";
+import { sendTransactionalEmail, upsertLoopsContact, LOOPS_TEMPLATES } from "@/lib/loops";
+import { provisionPracticeForUser } from "@/lib/provision-practice";
 import { createClient } from "@/lib/supabase/server";
-import { upsertLoopsContact, sendTransactionalEmail, LOOPS_TEMPLATES } from "@/lib/loops";
+import type { LicenseType } from "@/types/database";
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
@@ -21,43 +24,41 @@ export async function GET(request: Request) {
 
   const { user } = data;
 
-  const { data: existingProfile } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("id", user.id)
-    .maybeSingle();
+  await logAuditEvent({
+    userId: user.id,
+    action: "LOGIN",
+    ipAddress: getClientIp(request.headers),
+    userAgent: request.headers.get("user-agent"),
+  });
 
-  if (!existingProfile) {
-    const fullName = (user.user_metadata.full_name as string | undefined) ?? null;
-    const practiceName =
-      (user.user_metadata.practice_name as string | undefined) ?? "My Practice";
+  const fullName = user.user_metadata.full_name as string | undefined;
+  const licenseType = user.user_metadata.license_type as LicenseType | undefined;
+  const state = user.user_metadata.state as string | undefined;
 
-    const { data: organization } = await supabase
-      .from("organizations")
-      .insert({ name: practiceName, owner_id: user.id })
-      .select("id")
-      .single();
-
-    await supabase.from("profiles").insert({
-      id: user.id,
-      email: user.email!,
-      full_name: fullName,
-      organization_id: organization?.id ?? null,
-      role: "owner",
+  // Only signup confirmations carry provisioning metadata; a password-reset
+  // callback (for example) won't, and provisionPracticeForUser is a no-op if
+  // the user already has a clinician record.
+  if (fullName && licenseType && state) {
+    const result = await provisionPracticeForUser(supabase, user, {
+      fullName,
+      licenseType,
+      state,
     });
 
-    await upsertLoopsContact({
-      email: user.email!,
-      userId: user.id,
-      firstName: fullName?.split(" ")[0],
-      organizationName: practiceName,
-    }).catch(() => null);
+    if (!("error" in result)) {
+      await upsertLoopsContact({
+        email: user.email!,
+        userId: user.id,
+        firstName: fullName.split(" ")[0],
+        organizationName: `${fullName}'s Practice`,
+      }).catch(() => null);
 
-    await sendTransactionalEmail({
-      transactionalId: LOOPS_TEMPLATES.welcome,
-      email: user.email!,
-      dataVariables: { firstName: fullName ?? "there", practiceName },
-    }).catch(() => null);
+      await sendTransactionalEmail({
+        transactionalId: LOOPS_TEMPLATES.welcome,
+        email: user.email!,
+        dataVariables: { firstName: fullName.split(" ")[0] },
+      }).catch(() => null);
+    }
   }
 
   return NextResponse.redirect(`${origin}${next}`);

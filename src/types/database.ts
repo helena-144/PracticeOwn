@@ -1,5 +1,6 @@
 /**
- * Hand-authored to mirror the shape produced by `supabase gen types typescript`.
+ * Hand-authored to mirror the shape produced by `supabase gen types typescript`,
+ * matching supabase/migrations/001_initial_schema.sql.
  * Regenerate from the live schema with:
  *   supabase gen types typescript --project-id <project-ref> > src/types/database.ts
  */
@@ -12,297 +13,393 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
+export type PracticePlan = "trial" | "solo" | "group" | "enterprise";
+
+export type LicenseType = "LCSW" | "LPC" | "LMFT" | "PhD" | "PsyD" | "MD" | "NP" | "Other";
+
 export type CredentialType =
-  | "medical_license"
-  | "dea_registration"
-  | "board_certification"
-  | "malpractice_insurance"
+  | "license"
+  | "malpractice"
+  | "dea"
+  | "caqh"
   | "npi"
-  | "cds_registration"
-  | "hospital_privileges"
-  | "cme"
+  | "payer_enrollment"
   | "other";
 
-export type CredentialStatus = "active" | "expiring_soon" | "expired" | "pending_renewal";
+export type CredentialStatus = "active" | "expiring_soon" | "expired" | "pending" | "unknown";
 
-export type OwnershipEntityType =
-  | "physician"
-  | "private_equity"
-  | "mso"
-  | "hospital_system"
-  | "other_investor";
+export type PayerEnrollmentType = "direct" | "headway" | "grow_therapy" | "alma" | "other_platform";
 
-export type ExitType = "sale" | "succession" | "merger" | "retirement" | "recapitalization";
+export type PayerContractOwner = "practice" | "platform" | "unknown";
 
-export type AlertSeverity = "info" | "warning" | "critical";
+export type PayerNpiUsed = "individual" | "group" | "platform";
+
+export type PayerEnrollmentStatus =
+  | "pending"
+  | "submitted"
+  | "in_review"
+  | "active"
+  | "inactive"
+  | "denied"
+  | "reattesting";
 
 export type AlertType =
-  | "credential_expiring"
-  | "credential_expired"
-  | "ownership_compliance"
-  | "independence_score_drop"
-  | "exit_milestone"
-  | "billing";
+  | "caqh_attestation"
+  | "license_expiry"
+  | "malpractice_expiry"
+  | "dea_expiry"
+  | "payer_reattestion"
+  | "document_missing"
+  | "score_drop"
+  | "other";
 
-export type SubscriptionPlan = "solo" | "group";
+export type AlertSeverity = "low" | "medium" | "high" | "critical";
 
-export type SubscriptionStatus =
-  | "trialing"
-  | "active"
-  | "past_due"
-  | "canceled"
-  | "incomplete"
-  | "incomplete_expired"
-  | "unpaid";
+export type RoadmapModule = "ownership" | "credentials" | "independence" | "exit_planner" | "documentation";
 
-export type OrgRole = "owner" | "admin" | "staff";
+export type RoadmapPriority = "low" | "medium" | "high" | "critical";
+
+export type AuditAction =
+  | "INSERT"
+  | "UPDATE"
+  | "DELETE"
+  | "SELECT_PHI"
+  | "LOGIN"
+  | "LOGOUT"
+  | "FILE_ACCESS"
+  | "EXPORT";
+
+export interface IndependenceScoreBreakdown {
+  individual_npi: { points: number; max: number; met: boolean };
+  caqh_practice_controlled: { points: number; max: number; met: boolean };
+  caqh_attestation_current: { points: number; max: number; met: boolean };
+  direct_payer_contracts: { points: number; max: number; active_direct_contracts: number };
+  license_current: { points: number; max: number; met: boolean };
+  malpractice_current: { points: number; max: number; met: boolean };
+  no_critical_alerts: { points: number; max: number; met: boolean };
+}
 
 export interface Database {
   public: {
     Tables: {
-      organizations: {
+      practices: {
         Row: {
           id: string;
-          name: string;
-          npi: string | null;
-          tax_id: string | null;
-          specialty: string | null;
-          state: string | null;
           owner_id: string;
+          name: string;
+          state: string;
+          plan: PracticePlan;
           stripe_customer_id: string | null;
           stripe_subscription_id: string | null;
-          subscription_plan: SubscriptionPlan | null;
-          subscription_status: SubscriptionStatus | null;
+          subscription_status: string | null;
+          trial_ends_at: string | null;
+          independence_score: number;
           created_at: string;
           updated_at: string;
         };
         Insert: {
           id?: string;
-          name: string;
-          npi?: string | null;
-          tax_id?: string | null;
-          specialty?: string | null;
-          state?: string | null;
           owner_id: string;
+          name: string;
+          state: string;
+          plan?: PracticePlan;
           stripe_customer_id?: string | null;
           stripe_subscription_id?: string | null;
-          subscription_plan?: SubscriptionPlan | null;
-          subscription_status?: SubscriptionStatus | null;
+          subscription_status?: string | null;
+          trial_ends_at?: string | null;
+          independence_score?: number;
           created_at?: string;
           updated_at?: string;
         };
-        Update: Partial<Database["public"]["Tables"]["organizations"]["Insert"]>;
+        Update: Partial<Database["public"]["Tables"]["practices"]["Insert"]>;
         Relationships: [];
       };
-      profiles: {
+      clinicians: {
         Row: {
           id: string;
-          organization_id: string | null;
-          full_name: string | null;
+          practice_id: string;
+          user_id: string | null;
+          first_name: string;
+          last_name: string;
           email: string;
-          role: OrgRole;
-          avatar_url: string | null;
+          license_type: LicenseType;
+          npi_individual: string | null;
+          npi_group: string | null;
+          caqh_id: string | null;
+          caqh_username_encrypted: string | null;
+          caqh_last_attested_at: string | null;
+          caqh_next_attestation_due: string | null;
+          is_primary_clinician: boolean;
           created_at: string;
           updated_at: string;
         };
         Insert: {
-          id: string;
-          organization_id?: string | null;
-          full_name?: string | null;
+          id?: string;
+          practice_id: string;
+          user_id?: string | null;
+          first_name: string;
+          last_name: string;
           email: string;
-          role?: OrgRole;
-          avatar_url?: string | null;
+          license_type: LicenseType;
+          npi_individual?: string | null;
+          npi_group?: string | null;
+          caqh_id?: string | null;
+          caqh_last_attested_at?: string | null;
+          is_primary_clinician?: boolean;
           created_at?: string;
           updated_at?: string;
         };
-        Update: Partial<Database["public"]["Tables"]["profiles"]["Insert"]>;
+        Update: Partial<Database["public"]["Tables"]["clinicians"]["Insert"]>;
         Relationships: [];
       };
       credentials: {
         Row: {
           id: string;
-          organization_id: string;
-          provider_name: string;
-          credential_type: CredentialType;
+          clinician_id: string;
+          practice_id: string;
+          type: CredentialType;
+          name: string;
           issuing_body: string | null;
           credential_number: string | null;
           issue_date: string | null;
-          expiration_date: string | null;
+          expiry_date: string | null;
+          renewal_date: string | null;
           status: CredentialStatus;
           document_path: string | null;
-          reminder_days_before: number;
-          created_by: string;
+          notes: string | null;
           created_at: string;
           updated_at: string;
         };
         Insert: {
           id?: string;
-          organization_id: string;
-          provider_name: string;
-          credential_type: CredentialType;
+          clinician_id: string;
+          practice_id: string;
+          type: CredentialType;
+          name: string;
           issuing_body?: string | null;
           credential_number?: string | null;
           issue_date?: string | null;
-          expiration_date?: string | null;
+          expiry_date?: string | null;
+          renewal_date?: string | null;
           status?: CredentialStatus;
           document_path?: string | null;
-          reminder_days_before?: number;
-          created_by: string;
+          notes?: string | null;
           created_at?: string;
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["credentials"]["Insert"]>;
         Relationships: [];
       };
-      ownership_records: {
+      payer_enrollments: {
         Row: {
           id: string;
-          organization_id: string;
-          owner_name: string;
-          entity_type: OwnershipEntityType;
-          ownership_percentage: number;
-          effective_date: string;
-          cpom_compliant: boolean;
+          clinician_id: string;
+          practice_id: string;
+          payer_name: string;
+          payer_id: string | null;
+          enrollment_type: PayerEnrollmentType;
+          contract_owner: PayerContractOwner | null;
+          npi_used: PayerNpiUsed | null;
+          status: PayerEnrollmentStatus;
+          submitted_at: string | null;
+          approved_at: string | null;
+          reattestion_due_at: string | null;
+          monthly_rate_cents: number | null;
           notes: string | null;
           created_at: string;
           updated_at: string;
         };
         Insert: {
           id?: string;
-          organization_id: string;
-          owner_name: string;
-          entity_type: OwnershipEntityType;
-          ownership_percentage: number;
-          effective_date: string;
-          cpom_compliant?: boolean;
+          clinician_id: string;
+          practice_id: string;
+          payer_name: string;
+          payer_id?: string | null;
+          enrollment_type: PayerEnrollmentType;
+          contract_owner?: PayerContractOwner | null;
+          npi_used?: PayerNpiUsed | null;
+          status?: PayerEnrollmentStatus;
+          submitted_at?: string | null;
+          approved_at?: string | null;
+          reattestion_due_at?: string | null;
+          monthly_rate_cents?: number | null;
           notes?: string | null;
           created_at?: string;
           updated_at?: string;
         };
-        Update: Partial<Database["public"]["Tables"]["ownership_records"]["Insert"]>;
-        Relationships: [];
-      };
-      independence_scores: {
-        Row: {
-          id: string;
-          organization_id: string;
-          score: number;
-          category_scores: Json;
-          factors: Json;
-          calculated_at: string;
-        };
-        Insert: {
-          id?: string;
-          organization_id: string;
-          score: number;
-          category_scores?: Json;
-          factors?: Json;
-          calculated_at?: string;
-        };
-        Update: Partial<Database["public"]["Tables"]["independence_scores"]["Insert"]>;
-        Relationships: [];
-      };
-      exit_plans: {
-        Row: {
-          id: string;
-          organization_id: string;
-          exit_type: ExitType;
-          target_exit_date: string | null;
-          valuation_estimate_cents: number | null;
-          readiness_score: number;
-          milestones: Json;
-          notes: string | null;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          organization_id: string;
-          exit_type: ExitType;
-          target_exit_date?: string | null;
-          valuation_estimate_cents?: number | null;
-          readiness_score?: number;
-          milestones?: Json;
-          notes?: string | null;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: Partial<Database["public"]["Tables"]["exit_plans"]["Insert"]>;
+        Update: Partial<Database["public"]["Tables"]["payer_enrollments"]["Insert"]>;
         Relationships: [];
       };
       documents: {
         Row: {
           id: string;
-          organization_id: string;
-          title: string;
-          category: string | null;
-          storage_path: string;
-          uploaded_by: string;
+          practice_id: string;
+          clinician_id: string;
+          credential_id: string | null;
+          payer_enrollment_id: string | null;
+          file_name: string;
+          file_path: string;
+          file_type: string | null;
+          file_size_bytes: number | null;
+          uploaded_by: string | null;
           created_at: string;
         };
         Insert: {
           id?: string;
-          organization_id: string;
-          title: string;
-          category?: string | null;
-          storage_path: string;
-          uploaded_by: string;
+          practice_id: string;
+          clinician_id: string;
+          credential_id?: string | null;
+          payer_enrollment_id?: string | null;
+          file_name: string;
+          file_path: string;
+          file_type?: string | null;
+          file_size_bytes?: number | null;
+          uploaded_by?: string | null;
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["documents"]["Insert"]>;
         Relationships: [];
       };
-      qa_threads: {
-        Row: {
-          id: string;
-          organization_id: string;
-          document_id: string | null;
-          question: string;
-          answer: string | null;
-          created_by: string;
-          created_at: string;
-        };
-        Insert: {
-          id?: string;
-          organization_id: string;
-          document_id?: string | null;
-          question: string;
-          answer?: string | null;
-          created_by: string;
-          created_at?: string;
-        };
-        Update: Partial<Database["public"]["Tables"]["qa_threads"]["Insert"]>;
-        Relationships: [];
-      };
       alerts: {
         Row: {
           id: string;
-          organization_id: string;
+          practice_id: string;
+          clinician_id: string | null;
+          credential_id: string | null;
           type: AlertType;
           severity: AlertSeverity;
           title: string;
-          message: string;
-          related_id: string | null;
+          description: string | null;
+          due_date: string | null;
           is_read: boolean;
+          is_dismissed: boolean;
+          email_sent_at: string | null;
           created_at: string;
         };
         Insert: {
           id?: string;
-          organization_id: string;
+          practice_id: string;
+          clinician_id?: string | null;
+          credential_id?: string | null;
           type: AlertType;
           severity?: AlertSeverity;
           title: string;
-          message: string;
-          related_id?: string | null;
+          description?: string | null;
+          due_date?: string | null;
           is_read?: boolean;
+          is_dismissed?: boolean;
+          email_sent_at?: string | null;
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["alerts"]["Insert"]>;
         Relationships: [];
       };
+      independence_scores: {
+        Row: {
+          id: string;
+          practice_id: string;
+          score: number;
+          score_breakdown: Json;
+          computed_at: string;
+        };
+        Insert: {
+          id?: string;
+          practice_id: string;
+          score: number;
+          score_breakdown: Json;
+          computed_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["independence_scores"]["Insert"]>;
+        Relationships: [];
+      };
+      roadmap_steps: {
+        Row: {
+          id: string;
+          practice_id: string;
+          module: RoadmapModule;
+          step_number: number;
+          title: string;
+          description: string | null;
+          action_url: string | null;
+          is_completed: boolean;
+          completed_at: string | null;
+          priority: RoadmapPriority;
+          due_date: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          practice_id: string;
+          module: RoadmapModule;
+          step_number: number;
+          title: string;
+          description?: string | null;
+          action_url?: string | null;
+          is_completed?: boolean;
+          completed_at?: string | null;
+          priority?: RoadmapPriority;
+          due_date?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["roadmap_steps"]["Insert"]>;
+        Relationships: [];
+      };
+      audit_log: {
+        Row: {
+          id: string;
+          user_id: string | null;
+          practice_id: string | null;
+          action: AuditAction;
+          table_name: string | null;
+          row_id: string | null;
+          old_values: Json | null;
+          new_values: Json | null;
+          ip_address: string | null;
+          user_agent: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id?: string | null;
+          practice_id?: string | null;
+          action: AuditAction;
+          table_name?: string | null;
+          row_id?: string | null;
+          old_values?: Json | null;
+          new_values?: Json | null;
+          ip_address?: string | null;
+          user_agent?: string | null;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["audit_log"]["Insert"]>;
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      set_clinician_caqh_username: {
+        Args: { p_clinician_id: string; p_username: string };
+        Returns: undefined;
+      };
+      get_clinician_caqh_username: {
+        Args: { p_clinician_id: string };
+        Returns: string | null;
+      };
+      is_practice_member: {
+        Args: { p_practice_id: string };
+        Returns: boolean;
+      };
+      is_practice_owner: {
+        Args: { p_practice_id: string };
+        Returns: boolean;
+      };
+      recalculate_independence_score: {
+        Args: { p_practice_id: string };
+        Returns: undefined;
+      };
+    };
     Enums: Record<string, never>;
   };
 }

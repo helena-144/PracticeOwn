@@ -4,7 +4,6 @@ import { useRouter } from "next/navigation";
 import { Bell, LogOut, Settings, User as UserIcon } from "lucide-react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -16,39 +15,39 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAlerts } from "@/hooks/useAlerts";
-import { createClient } from "@/lib/supabase/client";
+import { signOutAction } from "@/lib/actions/auth";
 import { cn, getInitials } from "@/lib/utils";
-import type { Profile } from "@/types/practice";
+import type { Clinician } from "@/types/practice";
 
 const SEVERITY_DOT: Record<string, string> = {
-  info: "bg-blue-500",
-  warning: "bg-warning",
+  low: "bg-blue-500",
+  medium: "bg-warning",
+  high: "bg-warning",
   critical: "bg-destructive",
 };
 
 export function DashboardHeader({
-  profile,
-  organizationName,
-  organizationId,
+  clinician,
+  practiceName,
+  practiceId,
 }: {
-  profile: Profile | null;
-  organizationName: string | null;
-  organizationId: string | null;
+  clinician: Clinician | null;
+  practiceName: string | null;
+  practiceId: string | null;
 }) {
   const router = useRouter();
-  const { alerts, unreadCount, markAsRead } = useAlerts(organizationId);
+  const { alerts, unreadCount, markAsRead } = useAlerts(practiceId);
+
+  const fullName = clinician ? `${clinician.first_name} ${clinician.last_name}`.trim() : null;
 
   async function handleSignOut() {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    router.push("/login");
-    router.refresh();
+    await signOutAction();
   }
 
   return (
     <header className="flex h-14 items-center justify-between border-b bg-background px-4 md:px-6">
       <div className="text-sm font-medium text-muted-foreground">
-        {organizationName ?? "Your practice"}
+        {practiceName ?? "Your practice"}
       </div>
       <div className="flex items-center gap-2">
         <Popover>
@@ -87,7 +86,11 @@ export function DashboardHeader({
                   />
                   <span className="flex-1">
                     <span className="block font-medium">{alert.title}</span>
-                    <span className="block text-xs text-muted-foreground">{alert.message}</span>
+                    {alert.description && (
+                      <span className="block text-xs text-muted-foreground">
+                        {alert.description}
+                      </span>
+                    )}
                   </span>
                 </button>
               ))}
@@ -100,24 +103,21 @@ export function DashboardHeader({
             <Button variant="ghost" className="gap-2 px-2">
               <Avatar className="h-7 w-7">
                 <AvatarFallback className="text-xs">
-                  {profile?.full_name ? getInitials(profile.full_name) : <UserIcon className="h-3.5 w-3.5" />}
+                  {fullName ? getInitials(fullName) : <UserIcon className="h-3.5 w-3.5" />}
                 </AvatarFallback>
               </Avatar>
               <span className="hidden text-sm font-medium sm:inline-block">
-                {profile?.full_name ?? profile?.email}
+                {fullName ?? clinician?.email}
               </span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>
               <div className="flex flex-col">
-                <span className="font-medium">{profile?.full_name ?? "Account"}</span>
-                <span className="font-normal text-xs text-muted-foreground">{profile?.email}</span>
-                {profile?.role && (
-                  <Badge variant="outline" className="mt-1 w-fit capitalize">
-                    {profile.role}
-                  </Badge>
-                )}
+                <span className="font-medium">{fullName ?? "Account"}</span>
+                <span className="font-normal text-xs text-muted-foreground">
+                  {clinician?.email}
+                </span>
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />

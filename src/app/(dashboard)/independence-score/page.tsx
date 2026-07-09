@@ -13,29 +13,32 @@ import { CategoryBarChart, type CategoryBarDatum } from "@/components/charts/cat
 import { usePractice } from "@/hooks/usePractice";
 import { createClient } from "@/lib/supabase/client";
 import { formatDate } from "@/lib/utils";
-import {
-  parseIndependenceCategoryScores,
-  type IndependenceFactor,
-  type IndependenceScoreDetail,
-} from "@/types/practice";
-import type { Json } from "@/types/database";
+import type { IndependenceScoreBreakdown } from "@/types/database";
 
-const CATEGORY_LABELS: Record<string, string> = {
-  financialControl: "Financial Control",
-  clinicalAutonomy: "Clinical Autonomy",
-  operationalControl: "Operational Control",
-  contractualObligations: "Contractual Obligations",
-  ownershipStructure: "Ownership Structure",
+const CATEGORY_LABELS: Record<keyof IndependenceScoreBreakdown, string> = {
+  individual_npi: "Individual NPI on file",
+  caqh_practice_controlled: "CAQH controlled by practice",
+  caqh_attestation_current: "CAQH attestation current",
+  direct_payer_contracts: "Direct payer contracts",
+  license_current: "License current",
+  malpractice_current: "Malpractice current",
+  no_critical_alerts: "No critical alerts",
 };
 
+interface ScoreRecord {
+  score: number;
+  breakdown: IndependenceScoreBreakdown;
+  computedAt: string;
+}
+
 export default function IndependenceScorePage() {
-  const { organization } = usePractice();
-  const [scoreDetail, setScoreDetail] = useState<IndependenceScoreDetail | null>(null);
+  const { practice } = usePractice();
+  const [scoreRecord, setScoreRecord] = useState<ScoreRecord | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRecalculating, setIsRecalculating] = useState(false);
 
   const fetchScore = useCallback(async () => {
-    if (!organization?.id) {
+    if (!practice?.id) {
       setIsLoading(false);
       return;
     }
@@ -45,107 +48,43 @@ export default function IndependenceScorePage() {
     const { data, error } = await supabase
       .from("independence_scores")
       .select("*")
-      .eq("organization_id", organization.id)
-      .order("calculated_at", { ascending: false })
+      .eq("practice_id", practice.id)
+      .order("computed_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
     if (error) {
       toast.error(error.message);
     } else if (data) {
-      setScoreDetail({
-        ...data,
-        category_scores: parseIndependenceCategoryScores(data.category_scores),
-        factors: (data.factors as unknown as IndependenceFactor[]) ?? [],
+      setScoreRecord({
+        score: data.score,
+        breakdown: data.score_breakdown as unknown as IndependenceScoreBreakdown,
+        computedAt: data.computed_at,
       });
     } else {
-      setScoreDetail(null);
+      setScoreRecord(null);
     }
 
     setIsLoading(false);
-  }, [organization?.id]);
+  }, [practice?.id]);
 
   useEffect(() => {
     fetchScore();
   }, [fetchScore]);
 
   async function handleRecalculate() {
-    if (!organization?.id) return;
+    if (!practice?.id) return;
     setIsRecalculating(true);
 
     const supabase = createClient();
-    const { data: ownershipRecords, error: ownershipError } = await supabase
-      .from("ownership_records")
-      .select("*")
-      .eq("organization_id", organization.id);
-
-    if (ownershipError) {
-      toast.error(ownershipError.message);
-      setIsRecalculating(false);
-      return;
-    }
-
-    const outsideOwnership = (ownershipRecords ?? [])
-      .filter((r) => r.entity_type !== "physician")
-      .reduce((sum, r) => sum + r.ownership_percentage, 0);
-    const nonCompliantCount = (ownershipRecords ?? []).filter((r) => !r.cpom_compliant).length;
-    const hasHospitalSystemStake = (ownershipRecords ?? []).some(
-      (r) => r.entity_type === "hospital_system" && r.ownership_percentage > 0
-    );
-
-    const categoryScores = {
-      financialControl: Math.max(0, Math.round(100 - outsideOwnership)),
-      clinicalAutonomy: hasHospitalSystemStake ? 55 : 85,
-      operationalControl: 75,
-      contractualObligations: nonCompliantCount > 0 ? 45 : 80,
-      ownershipStructure: nonCompliantCount > 0 ? 40 : 90,
-    };
-
-    const overallScore = Math.round(
-      Object.values(categoryScores).reduce((sum, v) => sum + v, 0) /
-        Object.values(categoryScores).length
-    );
-
-    const factors: IndependenceFactor[] = [
-      {
-        category: "financialControl",
-        label: "Outside capital ownership",
-        impact: outsideOwnership > 25 ? "negative" : "positive",
-        weight: 1,
-        description: `${outsideOwnership.toFixed(1)}% of ownership held by non-physician entities.`,
-      },
-      {
-        category: "ownershipStructure",
-        label: "CPOM compliance",
-        impact: nonCompliantCount > 0 ? "negative" : "positive",
-        weight: 1,
-        description:
-          nonCompliantCount > 0
-            ? `${nonCompliantCount} ownership record(s) flagged as non-compliant.`
-            : "All ownership records are CPOM compliant.",
-      },
-      {
-        category: "clinicalAutonomy",
-        label: "Hospital system involvement",
-        impact: hasHospitalSystemStake ? "negative" : "neutral",
-        weight: 1,
-        description: hasHospitalSystemStake
-          ? "A hospital system holds an equity stake, which may constrain clinical autonomy."
-          : "No hospital system ownership detected.",
-      },
-    ];
-
-    const { error: insertError } = await supabase.from("independence_scores").insert({
-      organization_id: organization.id,
-      score: overallScore,
-      category_scores: categoryScores,
-      factors: factors as unknown as Json,
+    const { error } = await supabase.rpc("recalculate_independence_score", {
+      p_practice_id: practice.id,
     });
 
     setIsRecalculating(false);
 
-    if (insertError) {
-      toast.error(insertError.message);
+    if (error) {
+      toast.error(error.message);
       return;
     }
 
@@ -153,11 +92,14 @@ export default function IndependenceScorePage() {
     fetchScore();
   }
 
-  const categoryData: CategoryBarDatum[] = scoreDetail
-    ? Object.entries(scoreDetail.category_scores).map(([key, value]) => ({
-        label: CATEGORY_LABELS[key] ?? key,
-        value,
-      }))
+  const categoryData: CategoryBarDatum[] = scoreRecord
+    ? (Object.entries(scoreRecord.breakdown) as [keyof IndependenceScoreBreakdown, IndependenceScoreBreakdown[keyof IndependenceScoreBreakdown]][]).map(
+        ([key, value]) => ({
+          label: CATEGORY_LABELS[key] ?? key,
+          value: value.points,
+          max: value.max,
+        })
+      )
     : [];
 
   return (
@@ -166,10 +108,11 @@ export default function IndependenceScorePage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Independence Score</h1>
           <p className="text-sm text-muted-foreground">
-            A composite measure of how independent your practice is from outside control.
+            A composite measure of how independent your practice is from outside platforms and
+            payers.
           </p>
         </div>
-        <Button onClick={handleRecalculate} disabled={!organization || isRecalculating}>
+        <Button onClick={handleRecalculate} disabled={!practice || isRecalculating}>
           <RefreshCw className={isRecalculating ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
           Recalculate
         </Button>
@@ -177,13 +120,13 @@ export default function IndependenceScorePage() {
 
       {isLoading ? (
         <Skeleton className="h-64 w-full" />
-      ) : !scoreDetail ? (
+      ) : !scoreRecord ? (
         <Card>
           <CardContent className="flex flex-col items-center py-16 text-center">
             <p className="mb-4 text-sm text-muted-foreground">
-              No score calculated yet. Add ownership records, then recalculate.
+              No score calculated yet. Add credentials and payer enrollments, then recalculate.
             </p>
-            <Button onClick={handleRecalculate} disabled={!organization || isRecalculating}>
+            <Button onClick={handleRecalculate} disabled={!practice || isRecalculating}>
               Calculate independence score
             </Button>
           </CardContent>
@@ -192,15 +135,15 @@ export default function IndependenceScorePage() {
         <>
           <div className="grid gap-4 lg:grid-cols-3">
             <Card className="flex flex-col items-center justify-center py-6">
-              <ScoreGauge score={scoreDetail.score} label="out of 100" />
+              <ScoreGauge score={scoreRecord.score} label="out of 100" />
               <p className="mt-4 text-xs text-muted-foreground">
-                Last calculated {formatDate(scoreDetail.calculated_at)}
+                Last calculated {formatDate(scoreRecord.computedAt)}
               </p>
             </Card>
             <Card className="lg:col-span-2">
               <CardHeader>
                 <CardTitle>Category breakdown</CardTitle>
-                <CardDescription>Each category is weighted equally in the overall score.</CardDescription>
+                <CardDescription>Points earned toward the overall 100-point score.</CardDescription>
               </CardHeader>
               <CardContent>
                 <CategoryBarChart data={categoryData} />
@@ -213,31 +156,32 @@ export default function IndependenceScorePage() {
               <CardTitle>Contributing factors</CardTitle>
             </CardHeader>
             <CardContent>
-              {scoreDetail.factors.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No factors recorded.</p>
-              ) : (
-                <ul className="space-y-3">
-                  {scoreDetail.factors.map((factor, index) => (
-                    <li key={index} className="flex items-start justify-between gap-4 border-b pb-3 last:border-0">
-                      <div>
-                        <p className="text-sm font-medium">{factor.label}</p>
-                        <p className="text-xs text-muted-foreground">{factor.description}</p>
+              <ul className="space-y-3">
+                {(
+                  Object.entries(scoreRecord.breakdown) as [
+                    keyof IndependenceScoreBreakdown,
+                    IndependenceScoreBreakdown[keyof IndependenceScoreBreakdown],
+                  ][]
+                ).map(([key, value]) => {
+                  const met = "met" in value ? value.met : value.points === value.max;
+                  return (
+                    <li
+                      key={key}
+                      className="flex items-center justify-between gap-4 border-b pb-3 last:border-0"
+                    >
+                      <p className="text-sm font-medium">{CATEGORY_LABELS[key]}</p>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">
+                          {value.points}/{value.max}
+                        </span>
+                        <Badge variant={met ? "success" : "destructive"}>
+                          {met ? "Met" : "Not met"}
+                        </Badge>
                       </div>
-                      <Badge
-                        variant={
-                          factor.impact === "positive"
-                            ? "success"
-                            : factor.impact === "negative"
-                              ? "destructive"
-                              : "outline"
-                        }
-                      >
-                        {factor.impact}
-                      </Badge>
                     </li>
-                  ))}
-                </ul>
-              )}
+                  );
+                })}
+              </ul>
             </CardContent>
           </Card>
         </>

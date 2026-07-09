@@ -1,6 +1,8 @@
 import Stripe from "stripe";
 
-import type { SubscriptionPlan } from "@/types/database";
+import type { PracticePlan } from "@/types/database";
+
+type BillablePlan = Extract<PracticePlan, "solo" | "group">;
 
 let stripeClient: Stripe | null = null;
 
@@ -21,12 +23,12 @@ export function getStripeClient(): Stripe {
   return stripeClient;
 }
 
-export const STRIPE_PRICE_IDS: Record<SubscriptionPlan, string> = {
+export const STRIPE_PRICE_IDS: Record<BillablePlan, string> = {
   solo: process.env.STRIPE_SOLO_PRICE_ID!,
   group: process.env.STRIPE_GROUP_PRICE_ID!,
 };
 
-export function planFromPriceId(priceId: string): SubscriptionPlan | null {
+export function planFromPriceId(priceId: string): BillablePlan | null {
   if (priceId === STRIPE_PRICE_IDS.solo) return "solo";
   if (priceId === STRIPE_PRICE_IDS.group) return "group";
   return null;
@@ -36,7 +38,7 @@ export async function createCheckoutSession(params: {
   customerId?: string;
   customerEmail?: string;
   priceId: string;
-  organizationId: string;
+  practiceId: string;
   successUrl: string;
   cancelUrl: string;
 }) {
@@ -48,10 +50,10 @@ export async function createCheckoutSession(params: {
     success_url: params.successUrl,
     cancel_url: params.cancelUrl,
     subscription_data: {
-      metadata: { organization_id: params.organizationId },
+      metadata: { practice_id: params.practiceId },
     },
-    metadata: { organization_id: params.organizationId },
-    client_reference_id: params.organizationId,
+    metadata: { practice_id: params.practiceId },
+    client_reference_id: params.practiceId,
     allow_promotion_codes: true,
   });
 }

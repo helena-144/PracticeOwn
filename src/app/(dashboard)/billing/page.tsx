@@ -17,19 +17,25 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePractice } from "@/hooks/usePractice";
 import { cn } from "@/lib/utils";
-import type { BillingPlanOption } from "@/types/practice";
-import type { SubscriptionPlan, SubscriptionStatus } from "@/types/database";
+import type { PracticePlan } from "@/types/database";
 
-const PLANS: BillingPlanOption[] = [
+interface PlanOption {
+  id: PracticePlan;
+  name: string;
+  priceLabel: string;
+  description: string;
+  features: string[];
+}
+
+const PLANS: PlanOption[] = [
   {
     id: "solo",
     name: "Solo",
-    priceId: "solo",
     priceLabel: "$99/mo",
-    description: "For independent, single-provider practices.",
+    description: "For independent, single-clinician practices.",
     features: [
       "Unlimited credential tracking",
-      "Ownership & CPOM audit",
+      "CAQH attestation reminders",
       "Independence score",
       "Email renewal reminders",
     ],
@@ -37,35 +43,23 @@ const PLANS: BillingPlanOption[] = [
   {
     id: "group",
     name: "Group",
-    priceId: "group",
     priceLabel: "$299/mo",
-    description: "For multi-provider groups and practices.",
+    description: "For multi-clinician groups and practices.",
     features: [
       "Everything in Solo",
-      "Unlimited providers",
-      "Exit planning workspace",
-      "Documentation Q&A",
+      "Unlimited clinicians",
+      "Payer enrollment tracking",
       "Priority support",
     ],
   },
 ];
 
-const STATUS_LABEL: Record<SubscriptionStatus, string> = {
-  trialing: "Trialing",
-  active: "Active",
-  past_due: "Past due",
-  canceled: "Canceled",
-  incomplete: "Incomplete",
-  incomplete_expired: "Incomplete (expired)",
-  unpaid: "Unpaid",
-};
-
 export default function BillingPage() {
-  const { organization, isLoading } = usePractice();
-  const [pendingPlan, setPendingPlan] = useState<SubscriptionPlan | null>(null);
+  const { practice, isLoading } = usePractice();
+  const [pendingPlan, setPendingPlan] = useState<PracticePlan | null>(null);
   const [isOpeningPortal, setIsOpeningPortal] = useState(false);
 
-  async function handleSubscribe(plan: SubscriptionPlan) {
+  async function handleSubscribe(plan: PracticePlan) {
     setPendingPlan(plan);
 
     try {
@@ -118,8 +112,9 @@ export default function BillingPage() {
     );
   }
 
-  const currentPlan = organization?.subscription_plan ?? null;
-  const currentStatus = organization?.subscription_status ?? null;
+  const currentPlan = practice?.plan ?? null;
+  const currentStatus = practice?.subscription_status ?? null;
+  const hasBillingAccount = Boolean(practice?.stripe_customer_id);
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -128,7 +123,7 @@ export default function BillingPage() {
         <p className="text-sm text-muted-foreground">Manage your PracticeOwn subscription.</p>
       </div>
 
-      {currentPlan && (
+      {currentPlan && currentPlan !== "trial" && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <div>
@@ -137,15 +132,17 @@ export default function BillingPage() {
                 <span className="capitalize">{currentPlan}</span>
                 {currentStatus && (
                   <Badge variant={currentStatus === "active" ? "success" : "warning"}>
-                    {STATUS_LABEL[currentStatus]}
+                    <span className="capitalize">{currentStatus.replace(/_/g, " ")}</span>
                   </Badge>
                 )}
               </CardDescription>
             </div>
-            <Button variant="outline" onClick={handleManageBilling} disabled={isOpeningPortal}>
-              {isOpeningPortal && <Loader2 className="h-4 w-4 animate-spin" />}
-              Manage billing
-            </Button>
+            {hasBillingAccount && (
+              <Button variant="outline" onClick={handleManageBilling} disabled={isOpeningPortal}>
+                {isOpeningPortal && <Loader2 className="h-4 w-4 animate-spin" />}
+                Manage billing
+              </Button>
+            )}
           </CardHeader>
         </Card>
       )}

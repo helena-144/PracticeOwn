@@ -26,39 +26,39 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid plan" }, { status: 400 });
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single();
+  const { data: clinician } = await supabase
+    .from("clinicians")
+    .select("practice_id")
+    .eq("user_id", user.id)
+    .maybeSingle();
 
-  if (!profile?.organization_id) {
-    return NextResponse.json({ error: "No organization found for user" }, { status: 404 });
+  if (!clinician) {
+    return NextResponse.json({ error: "No practice found for user" }, { status: 404 });
   }
 
-  const { data: organization } = await supabase
-    .from("organizations")
+  const { data: practice } = await supabase
+    .from("practices")
     .select("id, stripe_customer_id")
-    .eq("id", profile.organization_id)
+    .eq("id", clinician.practice_id)
     .single();
 
-  if (!organization) {
-    return NextResponse.json({ error: "Organization not found" }, { status: 404 });
+  if (!practice) {
+    return NextResponse.json({ error: "Practice not found" }, { status: 404 });
   }
 
-  let customerId = organization.stripe_customer_id ?? undefined;
+  let customerId = practice.stripe_customer_id ?? undefined;
 
   if (!customerId) {
     const customer = await getStripeClient().customers.create({
       email: user.email,
-      metadata: { organization_id: organization.id, user_id: user.id },
+      metadata: { practice_id: practice.id, user_id: user.id },
     });
     customerId = customer.id;
 
     await supabase
-      .from("organizations")
+      .from("practices")
       .update({ stripe_customer_id: customerId })
-      .eq("id", organization.id);
+      .eq("id", practice.id);
   }
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
@@ -66,7 +66,7 @@ export async function POST(request: Request) {
   const session = await createCheckoutSession({
     customerId,
     priceId: STRIPE_PRICE_IDS[parsed.data.plan],
-    organizationId: organization.id,
+    practiceId: practice.id,
     successUrl: `${appUrl}/billing?checkout=success`,
     cancelUrl: `${appUrl}/billing?checkout=canceled`,
   });

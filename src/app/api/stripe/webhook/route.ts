@@ -4,16 +4,15 @@ import type Stripe from "stripe";
 import { getStripeClient, planFromPriceId } from "@/lib/stripe";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { sendTransactionalEmail, LOOPS_TEMPLATES } from "@/lib/loops";
-import type { SubscriptionStatus } from "@/types/database";
 
 export const runtime = "nodejs";
 
-async function getOrganizationIdForCustomer(
+async function getPracticeIdForCustomer(
   supabase: ReturnType<typeof createServiceRoleClient>,
   customerId: string
 ): Promise<string | null> {
   const { data } = await supabase
-    .from("organizations")
+    .from("practices")
     .select("id")
     .eq("stripe_customer_id", customerId)
     .single();
@@ -26,23 +25,22 @@ async function syncSubscription(subscription: Stripe.Subscription) {
   const customerId =
     typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id;
 
-  const organizationId =
-    subscription.metadata.organization_id ??
-    (await getOrganizationIdForCustomer(supabase, customerId));
+  const practiceId =
+    subscription.metadata.practice_id ?? (await getPracticeIdForCustomer(supabase, customerId));
 
-  if (!organizationId) return;
+  if (!practiceId) return;
 
   const priceId = subscription.items.data[0]?.price.id;
   const plan = priceId ? planFromPriceId(priceId) : null;
 
   await supabase
-    .from("organizations")
+    .from("practices")
     .update({
       stripe_subscription_id: subscription.id,
-      subscription_plan: plan,
-      subscription_status: subscription.status as SubscriptionStatus,
+      plan: plan ?? undefined,
+      subscription_status: subscription.status,
     })
-    .eq("id", organizationId);
+    .eq("id", practiceId);
 }
 
 export async function POST(request: Request) {
@@ -96,13 +94,13 @@ export async function POST(request: Request) {
         typeof subscription.customer === "string"
           ? subscription.customer
           : subscription.customer.id;
-      const organizationId = await getOrganizationIdForCustomer(supabase, customerId);
+      const practiceId = await getPracticeIdForCustomer(supabase, customerId);
 
-      if (organizationId) {
+      if (practiceId) {
         await supabase
-          .from("organizations")
+          .from("practices")
           .update({ subscription_status: "canceled" })
-          .eq("id", organizationId);
+          .eq("id", practiceId);
       }
       break;
     }
@@ -114,26 +112,22 @@ export async function POST(request: Request) {
 
       if (customerId) {
         const supabase = createServiceRoleClient();
-        const organizationId = await getOrganizationIdForCustomer(supabase, customerId);
+        const practiceId = await getPracticeIdForCustomer(supabase, customerId);
 
-        if (organizationId) {
-          const { data: org } = await supabase
-            .from("organizations")
+        if (practiceId) {
+          const { data: practice } = await supabase
+            .from("practices")
             .select("owner_id")
-            .eq("id", organizationId)
+            .eq("id", practiceId)
             .single();
 
-          if (org?.owner_id) {
-            const { data: owner } = await supabase
-              .from("profiles")
-              .select("email")
-              .eq("id", org.owner_id)
-              .single();
+          if (practice?.owner_id) {
+            const { data: owner } = await supabase.auth.admin.getUserById(practice.owner_id);
 
-            if (owner?.email) {
+            if (owner.user?.email) {
               await sendTransactionalEmail({
                 transactionalId: LOOPS_TEMPLATES.subscriptionPastDue,
-                email: owner.email,
+                email: owner.user.email,
               });
             }
           }

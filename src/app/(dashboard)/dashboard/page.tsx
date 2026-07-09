@@ -13,9 +13,9 @@ import { useAlerts } from "@/hooks/useAlerts";
 import { formatDate } from "@/lib/utils";
 
 export default function DashboardPage() {
-  const { organization, profile, isLoading: practiceLoading } = usePractice();
-  const { credentials, isLoading: credentialsLoading } = useCredentials(organization?.id);
-  const { alerts, isLoading: alertsLoading } = useAlerts(organization?.id);
+  const { practice, clinician, isLoading: practiceLoading } = usePractice();
+  const { credentials, isLoading: credentialsLoading } = useCredentials(practice?.id);
+  const { alerts, isLoading: alertsLoading } = useAlerts(practice?.id);
 
   const expiringSoon = credentials.filter((c) => c.status === "expiring_soon");
   const expired = credentials.filter((c) => c.status === "expired");
@@ -25,10 +25,10 @@ export default function DashboardPage() {
     <div className="mx-auto max-w-6xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">
-          Welcome back{profile?.full_name ? `, ${profile.full_name.split(" ")[0]}` : ""}
+          Welcome back{clinician?.first_name ? `, ${clinician.first_name}` : ""}
         </h1>
         <p className="text-sm text-muted-foreground">
-          Here&apos;s the state of {organization?.name ?? "your practice"} today.
+          Here&apos;s the state of {practice?.name ?? "your practice"} today.
         </p>
       </div>
 
@@ -92,10 +92,10 @@ export default function DashboardPage() {
                 {[...expired, ...expiringSoon].slice(0, 6).map((credential) => (
                   <li key={credential.id} className="flex items-center justify-between py-3">
                     <div>
-                      <p className="text-sm font-medium">{credential.provider_name}</p>
+                      <p className="text-sm font-medium">{credential.name}</p>
                       <p className="text-xs text-muted-foreground">
-                        {credential.expiration_date
-                          ? `Expires ${formatDate(credential.expiration_date)}`
+                        {credential.expiry_date
+                          ? `Expires ${formatDate(credential.expiry_date)}`
                           : "No expiration set"}
                       </p>
                     </div>
@@ -136,7 +136,9 @@ export default function DashboardPage() {
                 {alerts.slice(0, 5).map((alert) => (
                   <li key={alert.id} className="text-sm">
                     <p className="font-medium">{alert.title}</p>
-                    <p className="text-xs text-muted-foreground">{alert.message}</p>
+                    {alert.description && (
+                      <p className="text-xs text-muted-foreground">{alert.description}</p>
+                    )}
                   </li>
                 ))}
               </ul>
