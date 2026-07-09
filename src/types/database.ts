@@ -1,6 +1,7 @@
 /**
  * Hand-authored to mirror the shape produced by `supabase gen types typescript`,
- * matching supabase/migrations/001_initial_schema.sql.
+ * matching supabase/migrations/001_initial_schema.sql and
+ * supabase/migrations/002_onboarding_wizard.sql.
  * Regenerate from the live schema with:
  *   supabase gen types typescript --project-id <project-ref> > src/types/database.ts
  */
@@ -16,6 +17,24 @@ export type Json =
 export type PracticePlan = "trial" | "solo" | "group" | "enterprise";
 
 export type LicenseType = "LCSW" | "LPC" | "LMFT" | "PhD" | "PsyD" | "MD" | "NP" | "Other";
+
+export type PracticeType = "solo" | "small_group" | "group";
+
+export type PlatformSlug =
+  | "headway"
+  | "grow_therapy"
+  | "alma"
+  | "simple_practice"
+  | "therapy_notes"
+  | "theranest"
+  | "none"
+  | "other";
+
+export type NpiStatus = "yes" | "no" | "unknown";
+
+export type GroupNpiStatus = "yes" | "no" | "not_applicable";
+
+export type CaqhStatus = "practice_controlled" | "platform_managed" | "no" | "unknown";
 
 export type CredentialType =
   | "license"
@@ -94,6 +113,12 @@ export interface Database {
           subscription_status: string | null;
           trial_ends_at: string | null;
           independence_score: number;
+          practice_type: PracticeType | null;
+          years_in_practice: number | null;
+          current_platforms: PlatformSlug[];
+          platforms_other_detail: string | null;
+          onboarding_step: number;
+          onboarding_completed_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -108,6 +133,12 @@ export interface Database {
           subscription_status?: string | null;
           trial_ends_at?: string | null;
           independence_score?: number;
+          practice_type?: PracticeType | null;
+          years_in_practice?: number | null;
+          current_platforms?: PlatformSlug[];
+          platforms_other_detail?: string | null;
+          onboarding_step?: number;
+          onboarding_completed_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -129,6 +160,9 @@ export interface Database {
           caqh_username_encrypted: string | null;
           caqh_last_attested_at: string | null;
           caqh_next_attestation_due: string | null;
+          has_individual_npi: NpiStatus | null;
+          has_group_npi: GroupNpiStatus | null;
+          caqh_status: CaqhStatus | null;
           is_primary_clinician: boolean;
           created_at: string;
           updated_at: string;
@@ -145,6 +179,9 @@ export interface Database {
           npi_group?: string | null;
           caqh_id?: string | null;
           caqh_last_attested_at?: string | null;
+          has_individual_npi?: NpiStatus | null;
+          has_group_npi?: GroupNpiStatus | null;
+          caqh_status?: CaqhStatus | null;
           is_primary_clinician?: boolean;
           created_at?: string;
           updated_at?: string;
