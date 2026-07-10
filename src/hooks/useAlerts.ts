@@ -13,6 +13,7 @@ interface UseAlertsResult {
   refresh: () => Promise<void>;
   markAsRead: (id: string) => Promise<{ error: string | null }>;
   markAllAsRead: () => Promise<{ error: string | null }>;
+  dismissAlert: (id: string) => Promise<{ error: string | null }>;
 }
 
 export function useAlerts(practiceId: string | null | undefined): UseAlertsResult {
@@ -51,6 +52,9 @@ export function useAlerts(practiceId: string | null | undefined): UseAlertsResul
     fetchAlerts();
   }, [fetchAlerts]);
 
+  // Subscribes to every change (not just INSERT) so a dismiss/read from
+  // another tab, or an alert a scheduled job creates or updates server-side,
+  // shows up here without a manual refresh.
   useEffect(() => {
     if (!practiceId) return;
 
@@ -67,6 +71,32 @@ export function useAlerts(practiceId: string | null | undefined): UseAlertsResul
         },
         (payload) => {
           setAlerts((prev) => [payload.new as Alert, ...prev]);
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "alerts",
+          filter: `practice_id=eq.${practiceId}`,
+        },
+        (payload) => {
+          const updated = payload.new as Alert;
+          setAlerts((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "alerts",
+          filter: `practice_id=eq.${practiceId}`,
+        },
+        (payload) => {
+          const deletedId = (payload.old as Partial<Alert>).id;
+          setAlerts((prev) => prev.filter((a) => a.id !== deletedId));
         }
       )
       .subscribe();
@@ -109,7 +139,33 @@ export function useAlerts(practiceId: string | null | undefined): UseAlertsResul
     return { error: null };
   }, [practiceId]);
 
-  const unreadCount = alerts.filter((a) => !a.is_read).length;
+  const dismissAlert = useCallback(async (id: string) => {
+    const supabase = createClient();
+    const { error: updateError } = await supabase
+      .from("alerts")
+      .update({ is_dismissed: true, is_read: true })
+      .eq("id", id);
 
-  return { alerts, unreadCount, isLoading, error, refresh: fetchAlerts, markAsRead, markAllAsRead };
+    if (updateError) {
+      return { error: updateError.message };
+    }
+
+    setAlerts((prev) =>
+      prev.map((a) => (a.id === id ? { ...a, is_dismissed: true, is_read: true } : a))
+    );
+    return { error: null };
+  }, []);
+
+  const unreadCount = alerts.filter((a) => !a.is_read && !a.is_dismissed).length;
+
+  return {
+    alerts,
+    unreadCount,
+    isLoading,
+    error,
+    refresh: fetchAlerts,
+    markAsRead,
+    markAllAsRead,
+    dismissAlert,
+  };
 }

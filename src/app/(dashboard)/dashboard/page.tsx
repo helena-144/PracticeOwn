@@ -1,25 +1,46 @@
 "use client";
 
-import Link from "next/link";
-import { AlertTriangle, ArrowRight, BadgeCheck, DoorOpen, Gauge, Scale } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+import { IndependenceScoreCard } from "@/components/dashboard/independence-score-card";
+import { AlertsPanel } from "@/components/dashboard/alerts-panel";
+import { CredentialHealthStats } from "@/components/dashboard/credential-health-stats";
+import { PayerSummary } from "@/components/dashboard/payer-summary";
+import { RoadmapProgress } from "@/components/dashboard/roadmap-progress";
+import { QuickActions } from "@/components/dashboard/quick-actions";
 import { usePractice } from "@/hooks/usePractice";
 import { useCredentials } from "@/hooks/useCredentials";
-import { useAlerts } from "@/hooks/useAlerts";
-import { formatDate } from "@/lib/utils";
+import { usePayerEnrollments } from "@/hooks/usePayerEnrollments";
+import { useIndependenceScore } from "@/hooks/useIndependenceScore";
+import { createClient } from "@/lib/supabase/client";
+import type { Clinician } from "@/types/practice";
 
 export default function DashboardPage() {
-  const { practice, clinician, isLoading: practiceLoading } = usePractice();
-  const { credentials, isLoading: credentialsLoading } = useCredentials(practice?.id);
-  const { alerts, isLoading: alertsLoading } = useAlerts(practice?.id);
+  const { practice, clinician } = usePractice();
+  const { credentials, isLoading: credentialsLoading, createCredential } = useCredentials(
+    practice?.id
+  );
+  const {
+    payerEnrollments,
+    isLoading: payerEnrollmentsLoading,
+    refresh: refreshPayerEnrollments,
+  } = usePayerEnrollments(practice?.id);
+  const { recalculate, isRecalculating } = useIndependenceScore(practice?.id);
 
-  const expiringSoon = credentials.filter((c) => c.status === "expiring_soon");
-  const expired = credentials.filter((c) => c.status === "expired");
-  const isLoading = practiceLoading || credentialsLoading || alertsLoading;
+  const [clinicians, setClinicians] = useState<Clinician[]>([]);
+
+  const fetchClinicians = useCallback(async () => {
+    if (!practice?.id) return;
+    const supabase = createClient();
+    const { data } = await supabase.from("clinicians").select("*").eq("practice_id", practice.id);
+    setClinicians(data ?? []);
+  }, [practice?.id]);
+
+  useEffect(() => {
+    fetchClinicians();
+  }, [fetchClinicians]);
+
+  const caqhNextAttestationDue = clinician?.caqh_next_attestation_due ?? null;
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -32,161 +53,35 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <SummaryCard
-          title="Credentials"
-          value={isLoading ? null : credentials.length}
-          icon={BadgeCheck}
-          href="/credentials"
-          footer={
-            expired.length > 0
-              ? `${expired.length} expired`
-              : expiringSoon.length > 0
-                ? `${expiringSoon.length} expiring soon`
-                : "All current"
-          }
-          tone={expired.length > 0 ? "destructive" : expiringSoon.length > 0 ? "warning" : "default"}
-        />
-        <SummaryCard
-          title="Ownership Audit"
-          value={null}
-          icon={Scale}
-          href="/ownership-audit"
-          footer="Review CPOM compliance"
-        />
-        <SummaryCard
-          title="Independence Score"
-          value={null}
-          icon={Gauge}
-          href="/independence-score"
-          footer="See your latest score"
-        />
-        <SummaryCard
-          title="Exit Planner"
-          value={null}
-          icon={DoorOpen}
-          href="/exit-planner"
-          footer="Track exit readiness"
-        />
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="lg:col-span-1">
+          <IndependenceScoreCard practiceId={practice?.id} />
+        </div>
+        <div className="lg:col-span-2">
+          <AlertsPanel practiceId={practice?.id} credentials={credentials} payerEnrollments={payerEnrollments} />
+        </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Credentials needing attention</CardTitle>
-            <CardDescription>Licenses and certifications expiring within 60 days.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {credentialsLoading ? (
-              <div className="space-y-3">
-                {[1, 2, 3].map((i) => (
-                  <Skeleton key={i} className="h-12 w-full" />
-                ))}
-              </div>
-            ) : expiringSoon.length === 0 && expired.length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">
-                Nothing needs attention right now.
-              </p>
-            ) : (
-              <ul className="divide-y">
-                {[...expired, ...expiringSoon].slice(0, 6).map((credential) => (
-                  <li key={credential.id} className="flex items-center justify-between py-3">
-                    <div>
-                      <p className="text-sm font-medium">{credential.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {credential.expiry_date
-                          ? `Expires ${formatDate(credential.expiry_date)}`
-                          : "No expiration set"}
-                      </p>
-                    </div>
-                    <Badge variant={credential.status === "expired" ? "destructive" : "warning"}>
-                      {credential.status === "expired" ? "Expired" : "Expiring soon"}
-                    </Badge>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <Button variant="ghost" size="sm" asChild className="mt-2">
-              <Link href="/credentials">
-                View all credentials <ArrowRight className="h-3.5 w-3.5" />
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
+      <CredentialHealthStats
+        credentials={credentials}
+        caqhNextAttestationDue={caqhNextAttestationDue}
+        isLoading={credentialsLoading}
+      />
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent alerts</CardTitle>
-            <CardDescription>Latest notifications for your practice.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {alertsLoading ? (
-              <div className="space-y-3">
-                {[1, 2].map((i) => (
-                  <Skeleton key={i} className="h-10 w-full" />
-                ))}
-              </div>
-            ) : alerts.length === 0 ? (
-              <div className="flex flex-col items-center py-8 text-center">
-                <AlertTriangle className="mb-2 h-6 w-6 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">No alerts yet.</p>
-              </div>
-            ) : (
-              <ul className="space-y-3">
-                {alerts.slice(0, 5).map((alert) => (
-                  <li key={alert.id} className="text-sm">
-                    <p className="font-medium">{alert.title}</p>
-                    {alert.description && (
-                      <p className="text-xs text-muted-foreground">{alert.description}</p>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <PayerSummary payerEnrollments={payerEnrollments} isLoading={payerEnrollmentsLoading} />
+        <RoadmapProgress practiceId={practice?.id} />
       </div>
+
+      <QuickActions
+        practiceId={practice?.id}
+        clinicianId={clinician?.id}
+        clinicians={clinicians}
+        createCredential={createCredential}
+        onPayerAdded={refreshPayerEnrollments}
+        onRunAudit={recalculate}
+        isRunningAudit={isRecalculating}
+      />
     </div>
-  );
-}
-
-function SummaryCard({
-  title,
-  value,
-  icon: Icon,
-  href,
-  footer,
-  tone = "default",
-}: {
-  title: string;
-  value: number | null;
-  icon: React.ComponentType<{ className?: string }>;
-  href: string;
-  footer: string;
-  tone?: "default" | "warning" | "destructive";
-}) {
-  return (
-    <Link href={href}>
-      <Card className="transition-shadow hover:shadow-md">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
-          <Icon className="h-4 w-4 text-muted-foreground" />
-        </CardHeader>
-        <CardContent>
-          {value !== null && <div className="text-2xl font-bold">{value}</div>}
-          <p
-            className={
-              tone === "destructive"
-                ? "text-xs text-destructive"
-                : tone === "warning"
-                  ? "text-xs text-warning"
-                  : "text-xs text-muted-foreground"
-            }
-          >
-            {footer}
-          </p>
-        </CardContent>
-      </Card>
-    </Link>
   );
 }

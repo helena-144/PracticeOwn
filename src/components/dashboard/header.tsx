@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Bell, LogOut, Settings, User as UserIcon } from "lucide-react";
+import { Bell, CreditCard, LogOut, Settings, User as UserIcon } from "lucide-react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { MobileSidebar } from "@/components/dashboard/sidebar";
 import { useAlerts } from "@/hooks/useAlerts";
 import { signOutAction } from "@/lib/actions/auth";
 import { cn, getInitials } from "@/lib/utils";
@@ -46,8 +47,11 @@ export function DashboardHeader({
 
   return (
     <header className="flex h-14 items-center justify-between border-b bg-background px-4 md:px-6">
-      <div className="text-sm font-medium text-muted-foreground">
-        {practiceName ?? "Your practice"}
+      <div className="flex items-center gap-3">
+        <MobileSidebar />
+        <div className="text-sm font-medium text-muted-foreground">
+          {practiceName ?? "Your practice"}
+        </div>
       </div>
       <div className="flex items-center gap-2">
         <Popover>
@@ -123,8 +127,13 @@ export function DashboardHeader({
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => router.push("/settings")}>
               <Settings className="h-4 w-4" />
-              Settings
+              Profile &amp; Settings
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => router.push("/billing")}>
+              <CreditCard className="h-4 w-4" />
+              Billing
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleSignOut}>
               <LogOut className="h-4 w-4" />
               Sign out

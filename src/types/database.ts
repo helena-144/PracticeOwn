@@ -303,6 +303,7 @@ export interface Database {
           practice_id: string;
           clinician_id: string | null;
           credential_id: string | null;
+          payer_enrollment_id: string | null;
           type: AlertType;
           severity: AlertSeverity;
           title: string;
@@ -318,6 +319,7 @@ export interface Database {
           practice_id: string;
           clinician_id?: string | null;
           credential_id?: string | null;
+          payer_enrollment_id?: string | null;
           type: AlertType;
           severity?: AlertSeverity;
           title: string;
